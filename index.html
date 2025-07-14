@@ -1,0 +1,925 @@
+<?php
+// Koneksi ke database MySQL
+$servername = "localhost";
+$username = "root"; 
+$password = "";
+$dbname = "human_energy_db";
+
+// Buat koneksi
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+// Cek koneksi
+if ($conn->connect_error) {
+    die("Koneksi gagal: " . $conn->connect_error);
+}
+
+// Buat tabel jika belum ada
+$sql = "CREATE TABLE IF NOT EXISTS persons (
+    id INT(6) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    full_name VARCHAR(100) NOT NULL,
+    intelligence DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    skills DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    skill_type VARCHAR(50) NOT NULL,
+    credibility DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    quality DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    energy DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)";
+
+if (!$conn->query($sql) === TRUE) {
+    die("Error creating table: " . $conn->error);
+}
+
+// Fungsi untuk menghitung energi berdasarkan kemampuan
+function calculateEnergy($intelligence, $skills, $skill_type, $credibility, $quality) {
+    // Faktor bonus berdasarkan jenis kemampuan
+    $skill_bonus = 1.0;
+    switch ($skill_type) {
+        case 'Technical': $skill_bonus = 1.15; break;
+        case 'Creative': $skill_bonus = 1.25; break;
+        case 'Leadership': $skill_bonus = 1.30; break;
+        case 'Analytical': $skill_bonus = 1.20; break;
+        case 'Communication': $skill_bonus = 1.10; break;
+    }
+    
+    // Formula perhitungan energi
+    $energy = ($intelligence * 0.25) + 
+              ($skills * 0.35 * $skill_bonus) + 
+              ($credibility * 0.20) + 
+              ($quality * 0.20);
+    
+    return round($energy, 2);
+}
+
+// Proses form jika ada pengiriman data
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['add_person'])) {
+        $full_name = $_POST['full_name'];
+        $intelligence = floatval($_POST['intelligence']);
+        $skills = floatval($_POST['skills']);
+        $skill_type = $_POST['skill_type'];
+        $credibility = floatval($_POST['credibility']);
+        $quality = floatval($_POST['quality']);
+        
+        // Hitung energi
+        $energy = calculateEnergy($intelligence, $skills, $skill_type, $credibility, $quality);
+        
+        // Simpan ke database
+        $stmt = $conn->prepare("INSERT INTO persons (full_name, intelligence, skills, skill_type, credibility, quality, energy) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sddssdd", $full_name, $intelligence, $skills, $skill_type, $credibility, $quality, $energy);
+        
+        if ($stmt->execute()) {
+            $success_message = "Data '$full_name' berhasil ditambahkan!";
+        } else {
+            $error_message = "Error: " . $stmt->error;
+        }
+        $stmt->close();
+    }
+}
+
+// Ambil semua data orang
+$persons = [];
+$sql = "SELECT * FROM persons ORDER BY energy DESC";
+$result = $conn->query($sql);
+if ($result->num_rows > 0) {
+    while($row = $result->fetch_assoc()) {
+        $persons[] = $row;
+    }
+}
+
+// Hitung statistik
+$total_persons = count($persons);
+$average_energy = 0;
+$max_energy = 0;
+$min_energy = 0;
+
+if ($total_persons > 0) {
+    $energies = array_column($persons, 'energy');
+    $average_energy = round(array_sum($energies) / $total_persons, 2);
+    $max_energy = max($energies);
+    $min_energy = min($energies);
+}
+
+// Tutup koneksi
+$conn->close();
+?>
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistem Pengukur Energi Manusia</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <style>
+      :root {
+        --primary: #4e54c8;
+        --secondary: #8f94fb;
+        --success: #38ef7d;
+        --warning: #ff9966;
+        --danger: #ff416c;
+        --dark: #2c3e50;
+        --light: #f8f9fa;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      body {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        padding: 20px;
+        color: var(--dark);
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 30px;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        position: relative;
+        overflow: hidden;
+      }
+
+      header::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 5px;
+        background: linear-gradient(to right, var(--primary), var(--secondary));
+      }
+
+      header h1 {
+        color: var(--primary);
+        margin-bottom: 10px;
+        font-size: 2.8rem;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+      }
+
+      header p {
+        color: #666;
+        max-width: 700px;
+        margin: 0 auto;
+        line-height: 1.6;
+        font-size: 1.1rem;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .stat-card {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+        text-align: center;
+        transition: transform 0.3s ease;
+      }
+
+      .stat-card:hover {
+        transform: translateY(-5px);
+      }
+
+      .stat-icon {
+        font-size: 2.5rem;
+        margin-bottom: 15px;
+        color: var(--primary);
+      }
+
+      .stat-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--dark);
+        margin-bottom: 10px;
+      }
+
+      .stat-label {
+        font-size: 1.1rem;
+        color: #666;
+        font-weight: 500;
+      }
+
+      .main-content {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 25px;
+      }
+
+      @media (max-width: 992px) {
+        .main-content {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .card {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+        transition: transform 0.3s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-3px);
+      }
+
+      .card-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        color: var(--primary);
+        font-size: 1.5rem;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #f0f0f0;
+      }
+
+      .card-title i {
+        font-size: 1.8rem;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: #444;
+      }
+
+      .form-control {
+        width: 100%;
+        padding: 14px;
+        border: 2px solid #ddd;
+        border-radius: 10px;
+        font-size: 1rem;
+        transition: all 0.3s;
+      }
+
+      .form-control:focus {
+        border-color: var(--primary);
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(78, 84, 200, 0.2);
+      }
+
+      .btn {
+        display: inline-block;
+        padding: 14px 28px;
+        border: none;
+        border-radius: 10px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+      }
+
+      .btn-primary {
+        background: linear-gradient(to right, var(--primary), var(--secondary));
+        color: white;
+      }
+
+      .btn-block {
+        display: block;
+        width: 100%;
+      }
+
+      .btn:hover {
+        opacity: 0.9;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .btn:active {
+        transform: translateY(1px);
+      }
+
+      .person-list {
+        max-height: 600px;
+        overflow-y: auto;
+        margin-top: 20px;
+      }
+
+      .person-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+        transition: background-color 0.2s;
+      }
+
+      .person-item:hover {
+        background-color: #f8f9ff;
+      }
+
+      .person-info {
+        flex: 1;
+      }
+
+      .person-name {
+        font-weight: 700;
+        margin-bottom: 5px;
+        color: var(--dark);
+      }
+
+      .person-skills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .skill-tag {
+        background: #e0e7ff;
+        color: var(--primary);
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+
+      .person-energy {
+        min-width: 120px;
+        text-align: right;
+      }
+
+      .energy-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: var(--primary);
+      }
+
+      .energy-label {
+        font-size: 0.9rem;
+        color: #666;
+      }
+
+      .progress-container {
+        margin-top: 10px;
+        background: #f0f0f0;
+        border-radius: 10px;
+        height: 8px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(to right, var(--primary), var(--secondary));
+        border-radius: 10px;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        margin-top: 15px;
+      }
+
+      .metric-item {
+        background: #f8f9ff;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        border-left: 4px solid var(--primary);
+      }
+
+      .metric-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--dark);
+      }
+
+      .metric-label {
+        font-size: 0.9rem;
+        color: #666;
+      }
+
+      .energy-chart {
+        height: 200px;
+        background: #f8f9ff;
+        border-radius: 10px;
+        margin-top: 20px;
+        padding: 15px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-around;
+      }
+
+      .chart-bar {
+        width: 40px;
+        background: linear-gradient(to top, var(--primary), var(--secondary));
+        border-radius: 5px 5px 0 0;
+        position: relative;
+      }
+
+      .chart-label {
+        position: absolute;
+        bottom: -25px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 0.9rem;
+        color: #666;
+      }
+
+      .alert {
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        font-weight: 500;
+      }
+
+      .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border-left: 4px solid #28a745;
+      }
+
+      .alert-danger {
+        background: #f8d7da;
+        color: #721c24;
+        border-left: 4px solid #dc3545;
+      }
+
+      .skill-type-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+        margin-top: 15px;
+      }
+
+      .skill-type-card {
+        background: #f0f2ff;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        transition: all 0.3s;
+        cursor: pointer;
+        border: 2px solid transparent;
+      }
+
+      .skill-type-card:hover,
+      .skill-type-card.active {
+        background: #e0e7ff;
+        border-color: var(--primary);
+      }
+
+      .skill-type-icon {
+        font-size: 1.8rem;
+        margin-bottom: 10px;
+        color: var(--primary);
+      }
+
+      .skill-type-label {
+        font-weight: 600;
+        color: var(--dark);
+      }
+
+      footer {
+        text-align: center;
+        margin-top: 40px;
+        padding: 20px;
+        color: #666;
+        font-size: 0.9rem;
+      }
+
+      .energy-formula {
+        background: #f8f9ff;
+        padding: 15px;
+        border-radius: 10px;
+        margin-top: 20px;
+        font-size: 0.95rem;
+        border-left: 4px solid var(--primary);
+      }
+
+      .formula-title {
+        font-weight: 700;
+        margin-bottom: 10px;
+        color: var(--primary);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1><i class="fas fa-brain"></i> Sistem Pengukur Energi Manusia</h1>
+        <p>
+          Sistem ini mengukur energi seseorang berdasarkan kepintaran,
+          kemampuan, jenis kemampuan, kredibilitas, dan kualitas. Energi
+          dihitung secara ilmiah dan disimpan dalam database.
+        </p>
+      </header>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">
+            <i class="fas fa-users"></i>
+          </div>
+          <div class="stat-value"><?= $total_persons ?></div>
+          <div class="stat-label">Total Orang</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon">
+            <i class="fas fa-bolt"></i>
+          </div>
+          <div class="stat-value"><?= $average_energy ?></div>
+          <div class="stat-label">Energi Rata-Rata</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon">
+            <i class="fas fa-chart-line"></i>
+          </div>
+          <div class="stat-value"><?= $max_energy ?></div>
+          <div class="stat-label">Energi Tertinggi</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon">
+            <i class="fas fa-chart-bar"></i>
+          </div>
+          <div class="stat-value"><?= $min_energy ?></div>
+          <div class="stat-label">Energi Terendah</div>
+        </div>
+      </div>
+
+      <div class="main-content">
+        <div class="card">
+          <div class="card-title">
+            <i class="fas fa-user-plus"></i>
+            <h2>Tambah Orang</h2>
+          </div>
+
+          <?php if (isset($success_message)): ?>
+          <div class="alert alert-success">
+            <?= $success_message ?>
+          </div>
+          <?php endif; ?>
+
+          <?php if (isset($error_message)): ?>
+          <div class="alert alert-danger">
+            <?= $error_message ?>
+          </div>
+          <?php endif; ?>
+
+          <form method="POST">
+            <div class="form-group">
+              <label for="full_name">Nama Lengkap</label>
+              <input
+                type="text"
+                id="full_name"
+                name="full_name"
+                class="form-control"
+                placeholder="Masukkan nama lengkap"
+                required
+              />
+            </div>
+
+            <div class="metric-grid">
+              <div class="metric-item">
+                <div class="metric-value">0-100</div>
+                <div class="metric-label">Kepintaran</div>
+              </div>
+
+              <div class="metric-item">
+                <div class="metric-value">0-100</div>
+                <div class="metric-label">Kemampuan</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="intelligence">Kepintaran (Intelligence)</label>
+              <input
+                type="range"
+                id="intelligence"
+                name="intelligence"
+                class="form-control"
+                min="0"
+                max="100"
+                value="50"
+                required
+              />
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 0.8rem;
+                  color: #666;
+                  margin-top: 5px;
+                "
+              >
+                <span>0</span>
+                <span id="intelligenceValue">50</span>
+                <span>100</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="skills">Kemampuan (Skills)</label>
+              <input
+                type="range"
+                id="skills"
+                name="skills"
+                class="form-control"
+                min="0"
+                max="100"
+                value="60"
+                required
+              />
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 0.8rem;
+                  color: #666;
+                  margin-top: 5px;
+                "
+              >
+                <span>0</span>
+                <span id="skillsValue">60</span>
+                <span>100</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Jenis Kemampuan (Skill Type)</label>
+              <div class="skill-type-grid">
+                <div class="skill-type-card" data-value="Technical">
+                  <div class="skill-type-icon">
+                    <i class="fas fa-code"></i>
+                  </div>
+                  <div class="skill-type-label">Technical</div>
+                </div>
+
+                <div class="skill-type-card" data-value="Creative">
+                  <div class="skill-type-icon">
+                    <i class="fas fa-paint-brush"></i>
+                  </div>
+                  <div class="skill-type-label">Creative</div>
+                </div>
+
+                <div class="skill-type-card" data-value="Leadership">
+                  <div class="skill-type-icon">
+                    <i class="fas fa-users"></i>
+                  </div>
+                  <div class="skill-type-label">Leadership</div>
+                </div>
+
+                <div class="skill-type-card" data-value="Analytical">
+                  <div class="skill-type-icon">
+                    <i class="fas fa-chart-pie"></i>
+                  </div>
+                  <div class="skill-type-label">Analytical</div>
+                </div>
+
+                <div class="skill-type-card" data-value="Communication">
+                  <div class="skill-type-icon">
+                    <i class="fas fa-comments"></i>
+                  </div>
+                  <div class="skill-type-label">Communication</div>
+                </div>
+              </div>
+              <input
+                type="hidden"
+                id="skill_type"
+                name="skill_type"
+                value="Technical"
+                required
+              />
+            </div>
+
+            <div class="metric-grid">
+              <div class="metric-item">
+                <div class="metric-value">0-100</div>
+                <div class="metric-label">Kredibilitas</div>
+              </div>
+
+              <div class="metric-item">
+                <div class="metric-value">0-100</div>
+                <div class="metric-label">Kualitas</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="credibility">Kredibilitas (Credibility)</label>
+              <input
+                type="range"
+                id="credibility"
+                name="credibility"
+                class="form-control"
+                min="0"
+                max="100"
+                value="70"
+                required
+              />
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 0.8rem;
+                  color: #666;
+                  margin-top: 5px;
+                "
+              >
+                <span>0</span>
+                <span id="credibilityValue">70</span>
+                <span>100</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="quality">Kualitas (Quality)</label>
+              <input
+                type="range"
+                id="quality"
+                name="quality"
+                class="form-control"
+                min="0"
+                max="100"
+                value="65"
+                required
+              />
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  font-size: 0.8rem;
+                  color: #666;
+                  margin-top: 5px;
+                "
+              >
+                <span>0</span>
+                <span id="qualityValue">65</span>
+                <span>100</span>
+              </div>
+            </div>
+
+            <div class="energy-formula">
+              <div class="formula-title">Formula Energi:</div>
+              <div>
+                Energi = (Kepintaran × 0.25) + (Kemampuan × Bonus Jenis) +
+                (Kredibilitas × 0.20) + (Kualitas × 0.20)
+              </div>
+              <div>
+                Bonus Jenis: Technical (15%), Creative (25%), Leadership (30%),
+                Analytical (20%), Communication (10%)
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              name="add_person"
+              class="btn btn-primary btn-block"
+            >
+              <i class="fas fa-plus-circle"></i> Hitung & Tambahkan
+            </button>
+          </form>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <i class="fas fa-list"></i>
+            <h2>Daftar Orang & Energi</h2>
+          </div>
+
+          <?php if ($total_persons >
+          0): ?>
+          <div class="person-list">
+            <?php foreach ($persons as $person): ?>
+            <div class="person-item">
+              <div class="person-info">
+                <div class="person-name"><?= $person['full_name'] ?></div>
+                <div class="person-skills">
+                  <span class="skill-tag"><?= $person['skill_type'] ?></span>
+                  <span class="skill-tag"
+                    >Kepintaran:
+                    <?= $person['intelligence'] ?></span
+                  >
+                  <span class="skill-tag"
+                    >Kemampuan:
+                    <?= $person['skills'] ?></span
+                  >
+                  <span class="skill-tag"
+                    >Kredibilitas:
+                    <?= $person['credibility'] ?></span
+                  >
+                  <span class="skill-tag"
+                    >Kualitas:
+                    <?= $person['quality'] ?></span
+                  >
+                </div>
+
+                <div class="progress-container">
+                  <div
+                    class="progress-bar"
+                    style="width: <?= min($person[ 'energy'], 100) ?>%"
+                  ></div>
+                </div>
+              </div>
+
+              <div class="person-energy">
+                <div class="energy-value"><?= $person['energy'] ?></div>
+                <div class="energy-label">Unit Energi</div>
+              </div>
+            </div>
+            <?php endforeach; ?>
+          </div>
+
+          <div class="energy-chart">
+            <?php 
+                        // Ambil 5 orang dengan energi tertinggi untuk chart
+                        $top_persons = array_slice($persons, 0, 5);
+                        $max_energy_chart = $max_energy >
+            0 ? $max_energy : 100; foreach ($top_persons as $person): $height =
+            ($person['energy'] / $max_energy_chart) * 180; ?>
+            <div class="chart-bar" style="height: <?= $height ?>px">
+              <div class="chart-label"><?= $person['full_name'] ?></div>
+            </div>
+            <?php endforeach; ?>
+          </div>
+          <?php else: ?>
+          <div style="text-align: center; padding: 40px 20px; color: #666">
+            <i
+              class="fas fa-user-slash"
+              style="font-size: 4rem; margin-bottom: 20px; opacity: 0.3"
+            ></i>
+            <h3>Belum ada data orang</h3>
+            <p>Tambahkan orang pertama menggunakan form di samping</p>
+          </div>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <footer>
+        <p>
+          Sistem Pengukur Energi Manusia &copy; 2023 | Berbasis Kemampuan,
+          Kepintaran, Kredibilitas, dan Kualitas
+        </p>
+      </footer>
+    </div>
+
+    <script>
+      // Update nilai slider
+      document
+        .getElementById("intelligence")
+        .addEventListener("input", function () {
+          document.getElementById("intelligenceValue").textContent = this.value;
+        });
+
+      document.getElementById("skills").addEventListener("input", function () {
+        document.getElementById("skillsValue").textContent = this.value;
+      });
+
+      document
+        .getElementById("credibility")
+        .addEventListener("input", function () {
+          document.getElementById("credibilityValue").textContent = this.value;
+        });
+
+      document.getElementById("quality").addEventListener("input", function () {
+        document.getElementById("qualityValue").textContent = this.value;
+      });
+
+      // Pilih jenis kemampuan
+      document.querySelectorAll(".skill-type-card").forEach((card) => {
+        card.addEventListener("click", function () {
+          document.querySelectorAll(".skill-type-card").forEach((c) => {
+            c.classList.remove("active");
+          });
+
+          this.classList.add("active");
+          document.getElementById("skill_type").value =
+            this.getAttribute("data-value");
+        });
+      });
+
+      // Set Technical as default active
+      document
+        .querySelector('[data-value="Technical"]')
+        .classList.add("active");
+    </script>
+  </body>
+</html>
